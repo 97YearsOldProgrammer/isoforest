@@ -85,7 +85,10 @@ void single_viterbi_algo(Pos_prob *pos, Observed_events *info, Explicit_duration
 void path_restricted_viterbi(Pos_prob *pos, Observed_events *info, Explicit_duration *ed, 
                              Vitbi_algo *vit, Lambda *l, Locus *loc);
 void extract_isoform_from_path(int *path, Observed_events *info, Isoform *iso);
+void reset_viterbi(Vitbi_algo *vit, Observed_events *info);
+void initialize_viterbi_from_posterior(Vitbi_algo *vit, Pos_prob *pos, Observed_events *info);
 int validate_isoform(Isoform *iso, Explicit_duration *ed);
+
 
 /* --------------- Viterbi On Decision Tree Splitting Criteria --------------- */
 void viterbi_on_subset(SpliceSite *sites, int n_sites, Observed_events *info,
@@ -101,7 +104,7 @@ void build_tree_with_viterbi(SpliceSite *sites, int n_sites, RandomForest *rf,
 /* --------------- Viterbi On Random Forest --------------- */
 void generate_isoforms_random_forest(RandomForest *rf, Observed_events *info,
                                      Explicit_duration *ed, Lambda *l, 
-                                     Locus *loc, Vitbi_algo *vit,
+                                     Locus *loc,
                                      int use_path_restriction);
 
 /* --------------- Output Functions --------------- */
