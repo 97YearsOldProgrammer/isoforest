@@ -103,9 +103,9 @@ void build_tree_with_viterbi(SpliceSite *sites, int n_sites, RandomForest *rf,
 
 /* --------------- Viterbi On Random Forest --------------- */
 void generate_isoforms_random_forest(RandomForest *rf, Observed_events *info,
-                                     Explicit_duration *ed, Lambda *l, 
-                                     Locus *loc,
-                                     int use_path_restriction);
+                                    Explicit_duration *ed, Lambda *l,
+                                    Locus *loc, Vitbi_algo *vit,
+                                    int use_path_restriction);
 
 /* --------------- Output Functions --------------- */
 void print_locus(Locus *loc, Observed_events *info);
