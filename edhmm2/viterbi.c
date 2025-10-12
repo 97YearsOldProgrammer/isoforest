@@ -407,19 +407,17 @@ void extract_isoform_from_path(int *path, Observed_events *info, Isoform *iso) {
         }
     }
     
-    // Set the number of introns
-    iso->n_introns = n_dons;
+    // Set the number of well-formed introns (paired donor/acceptor)
+    int paired_introns = (n_dons < n_accs) ? n_dons : n_accs;
+    iso->n_introns = paired_introns;
 
-    // BUG FIX: Only allocate and fill arrays if there are introns
-    if (n_dons > 0) {
-        iso->dons = malloc(n_dons * sizeof(int));
-        iso->accs = malloc(n_accs * sizeof(int));  // Note: n_accs should equal n_dons
-        
-        for (int i = 0; i < n_dons; i++) {
+    // Only allocate and fill arrays if there are complete introns
+    if (paired_introns > 0) {
+        iso->dons = malloc(paired_introns * sizeof(int));
+        iso->accs = malloc(paired_introns * sizeof(int));
+
+        for (int i = 0; i < paired_introns; i++) {
             iso->dons[i] = temp_dons[i];
-        }
-        for (int i = 0; i < n_accs; i++) {
-            iso->accs[i] = temp_accs[i];
         }
     } else {
         // No introns found - set pointers to NULL
