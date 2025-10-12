@@ -8,10 +8,10 @@
 /* --------------- Auxilary Function --------------- */
 
 static double log_sum_sub(double val, double add, double sub) {
-    double max          = (val > add) ? val : add;    
+    double max          = (val > add) ? val : add;
     double sum          = exp(val - max) + exp(add - max);
     double log_sum      = max + log(sum);
-    double max_val      = (log_sum > sub) ? log_sum : sub;    
+    double max_val      = (log_sum > sub) ? log_sum : sub;
     double diff         = exp(log_sum - max_val) - exp(sub - max_val);
 
     if (diff <= 0) {
@@ -21,23 +21,77 @@ static double log_sum_sub(double val, double add, double sub) {
     return max_val + log(diff);
 }
 
-/* --------------- Local Viterbi Allocation --------------- */
+/* --------------- Viterbi State Management --------------- */
 
-static Vitbi_algo* allocate_local_viterbi(Observed_events *info) {
-    Vitbi_algo *vit = malloc(sizeof(Vitbi_algo));
-    vit->v = malloc(HS * sizeof(double*));
-    for(int i = 0; i < HS; i++) {
-        vit->v[i] = calloc(info->T, sizeof(double));
+void allocate_vit(Vitbi_algo *vit, Observed_events *info) {
+    if (!vit || !info || info->T <= 0) {
+        return;
     }
-    return vit;
+
+    vit->v = malloc(HS * sizeof(double*));
+    if (!vit->v) {
+        fprintf(stderr, "Failed to allocate Viterbi state arrays.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int state = 0; state < HS; state++) {
+        vit->v[state] = calloc(info->T, sizeof(double));
+        if (!vit->v[state]) {
+            fprintf(stderr, "Failed to allocate Viterbi state rows.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    vit->exon = 0.0;
+    vit->intron = 0.0;
 }
 
-static void free_local_viterbi(Vitbi_algo *vit) {
-    for(int i = 0; i < HS; i++) {
-        free(vit->v[i]);
+void free_vit(Vitbi_algo *vit, Observed_events *info) {
+    (void)info;
+
+    if (!vit || !vit->v) {
+        return;
+    }
+
+    for (int state = 0; state < HS; state++) {
+        free(vit->v[state]);
+        vit->v[state] = NULL;
     }
     free(vit->v);
-    free(vit);
+    vit->v = NULL;
+
+    vit->exon = 0.0;
+    vit->intron = 0.0;
+}
+
+void reset_viterbi(Vitbi_algo *vit, Observed_events *info) {
+    if (!vit || !vit->v || !info) {
+        return;
+    }
+
+    for (int state = 0; state < HS; state++) {
+        memset(vit->v[state], 0, sizeof(double) * info->T);
+    }
+
+    vit->exon = 0.0;
+    vit->intron = 0.0;
+}
+
+void initialize_viterbi_from_posterior(Vitbi_algo *vit, Pos_prob *pos, Observed_events *info) {
+    if (!vit || !vit->v || !pos || !pos->xi || !info) {
+        return;
+    }
+
+    for (int t = 0; t < info->T; t++) {
+        double *posterior_states = pos->xi[t];
+        for (int state = 0; state < HS; state++) {
+            double value = 0.0;
+            if (posterior_states) {
+                value = posterior_states[state];
+            }
+            vit->v[state][t] = value;
+        }
+    }
 }
 
 /* --------------- Validation Function --------------- */

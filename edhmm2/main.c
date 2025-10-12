@@ -314,6 +314,9 @@ int main(int argc, char *argv[])
             printf("Warning: No splice sites found. Cannot run Random Forest.\n");
         } else {
             Locus *loc = create_locus(n_isoforms);
+            Vitbi_algo vit;
+            memset(&vit, 0, sizeof(Vitbi_algo));
+            allocate_vit(&vit, &info);
             
             if (DEBUG) {
                 printf("Generating isoforms using Random Forest:\n");
@@ -324,12 +327,14 @@ int main(int argc, char *argv[])
             }
 
             RandomForest *rf = create_random_forest(&pos, loc, node_size, mtry);
-            generate_isoforms_random_forest(rf, &info, &ed, &l, loc, use_path_restriction);
+            generate_isoforms_random_forest(rf, &info, &ed, &l, loc, &vit,
+                                            use_path_restriction);
             if (DEBUG) printf("Unique isoforms found: %d\n", loc->n_isoforms);
             print_locus(loc, &info);
-            
+
             // Clean up random forest and locus
             free_random_forest(rf);
+            free_vit(&vit, &info);
             free_locus(loc);
         }
     }
