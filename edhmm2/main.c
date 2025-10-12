@@ -32,6 +32,7 @@ void print_usage(const char *program_name) {
     printf("  -r, --restrict_path           Use path restriction in Viterbi\n");
     printf("\nOutput control:\n");
     printf("  -p, --print_splice            Print detailed splice site analysis\n");
+    printf("  -j, --json FILE               Write isoform locus information to JSON file\n");
     printf("  -v, --verbose                 Show debug and progress information\n");
     printf("  -h, --help                    Show this help message\n");
     printf("\nExamples:\n");
@@ -65,6 +66,7 @@ int main(int argc, char *argv[])
     char *Ped_intron            = default_Ped_intron;
     char *seq_input             = NULL;
     int print_splice_detailed   = 0;
+    char *json_output_path      = NULL;
     int flank_size              = DEFAULT_FLANK;
     float mtry                  = 0.5;          // Default to 1/2 of features
     int node_size               = 5;            // for regression 5 as node_size
@@ -81,6 +83,7 @@ int main(int argc, char *argv[])
         {"n_isoforms",      required_argument, 0, 'N'},
         {"mtry",            required_argument, 0, 'm'},
         {"node_size",       required_argument, 0, 'z'},
+        {"json",            required_argument, 0, 'j'},
         {"restrict_path",   no_argument,       0, 'r'},
         {"print_splice",    no_argument,       0, 'p'},
         {"stovit",          no_argument,       0, 'S'},
@@ -92,7 +95,7 @@ int main(int argc, char *argv[])
     int option_index = 0;
     int c;
 
-    while ((c = getopt_long(argc, argv, "s:d:a:e:i:x:n:f:N:m:z:rSpvh", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:d:a:e:i:x:n:f:N:m:z:j:rSpvh", long_options, &option_index)) != -1) {
         switch (c) {
             case 's':
                 seq_input = optarg;
@@ -164,6 +167,9 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "Error: node_size must be at least 1\n");
                     return 1;
                 }
+                break;
+            case 'j':
+                json_output_path = optarg;
                 break;
             case 'r':
                 use_path_restriction = 1;
@@ -313,6 +319,12 @@ int main(int argc, char *argv[])
         if (pos.dons == 0 || pos.accs == 0) {
             printf("Warning: No splice sites found. Cannot run Random Forest.\n");
         } else {
+            if (!use_path_restriction) {
+                use_path_restriction = 1;
+                if (DEBUG) {
+                    printf("Path restriction enabled by default for Random Forest.\n");
+                }
+            }
             Locus *loc = create_locus(n_isoforms);
             Vitbi_algo vit;
             memset(&vit, 0, sizeof(Vitbi_algo));
@@ -327,10 +339,17 @@ int main(int argc, char *argv[])
             }
 
             RandomForest *rf = create_random_forest(&pos, loc, node_size, mtry);
-            generate_isoforms_random_forest(rf, &info, &ed, &l, loc, &vit, use_path_restriction);
+            generate_isoforms_random_forest(rf, &info, &ed, &l, loc, &vit,
+                                            use_path_restriction);
             if (DEBUG) printf("Unique isoforms found: %d\n", loc->n_isoforms);
             print_locus(loc, &info);
-            
+            if (json_output_path) {
+                if (write_locus_json(loc, &info, json_output_path) != 0) {
+                    fprintf(stderr, "Warning: failed to write JSON output to %s\n",
+                            json_output_path);
+                }
+            }
+
             // Clean up random forest and locus
             free_random_forest(rf);
             free_vit(&vit, &info);

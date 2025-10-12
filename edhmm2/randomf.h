@@ -109,5 +109,6 @@ void generate_isoforms_random_forest(RandomForest *rf, Observed_events *info,
 
 /* --------------- Output Functions --------------- */
 void print_locus(Locus *loc, Observed_events *info);
+int write_locus_json(Locus *loc, Observed_events *info, const char *filename);
 
 #endif

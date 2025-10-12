@@ -98,7 +98,7 @@ rf-custom: hmm
 		--intron_emission ../models/intron.mm \
 		--ped_exon ../models/exon.len \
 		--ped_intron ../models/intron.len \
-		--n_isoforms 100 \
+		--n_isoforms 100000 \
 		--m 0.5 \
 		--stovit \
 		--node_size 5

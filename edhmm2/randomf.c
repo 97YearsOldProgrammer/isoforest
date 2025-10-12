@@ -527,6 +527,12 @@ void generate_isoforms_random_forest(RandomForest *rf, Observed_events *info,
                                      Locus *loc, Vitbi_algo *vit,
                                      int use_path_restriction) {
     
+    if (!use_path_restriction) {
+        use_path_restriction = 1;
+        if (DEBUG) {
+            printf("Path restriction enforced for Random Forest isoform generation.\n");
+        }
+    }
     int trees_without_new_isoforms  = 0;
     int max_trees_without_progress  = 100;
     int tree_count                  = 0;

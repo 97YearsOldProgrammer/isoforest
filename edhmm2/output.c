@@ -43,6 +43,7 @@ Isoform* create_isoform(int beg, int end) {
     iso->dons       = NULL;
     iso->accs       = NULL;
     iso->n_introns  = 0;
+    iso->val        = 0.0;
     return iso;
 }
 
@@ -64,7 +65,7 @@ void free_locus(Locus *loc) {
     }
 }
 
-/* --------------- Json Output --------------- */
+/* --------------- Text Output --------------- */
 
 void print_locus(Locus *loc, Observed_events *info) {
     int FLANK = (info->flank != 0) ? info->flank : DEFAULT_FLANK;
@@ -96,6 +97,71 @@ void print_locus(Locus *loc, Observed_events *info) {
         
         if (i < loc->n_isoforms - 1) printf("\n");
     }
+}
+
+/* --------------- JSON Output --------------- */
+
+int write_locus_json(Locus *loc, Observed_events *info, const char *filename) {
+    if (!loc || !info || !filename) {
+        return -1;
+    }
+
+    FILE *fp = fopen(filename, "w");
+    if (!fp) {
+        fprintf(stderr, "Error: unable to open JSON output file %s\n", filename);
+        return -1;
+    }
+
+    int FLANK = (info->flank != 0) ? info->flank : DEFAULT_FLANK;
+
+    fprintf(fp, "{\n");
+    fprintf(fp, "  \"flank\": %d,\n", FLANK);
+    fprintf(fp, "  \"sequence_length\": %d,\n", info->T);
+    fprintf(fp, "  \"locus\": [\n");
+
+    for (int i = 0; i < loc->n_isoforms; i++) {
+        Isoform *iso = loc->isoforms[i];
+        fprintf(fp, "    {\n");
+        fprintf(fp, "      \"begin\": %d,\n", iso->beg);
+        fprintf(fp, "      \"end\": %d,\n", iso->end);
+        fprintf(fp, "      \"score\": %.15g,\n", iso->val);
+
+        fprintf(fp, "      \"donors\": [");
+        for (int j = 0; j < iso->n_introns; j++) {
+            fprintf(fp, "%d", iso->dons ? iso->dons[j] : 0);
+            if (j < iso->n_introns - 1) {
+                fprintf(fp, ", ");
+            }
+        }
+        fprintf(fp, "],\n");
+
+        fprintf(fp, "      \"acceptors\": [");
+        for (int j = 0; j < iso->n_introns; j++) {
+            fprintf(fp, "%d", iso->accs ? iso->accs[j] : 0);
+            if (j < iso->n_introns - 1) {
+                fprintf(fp, ", ");
+            }
+        }
+        fprintf(fp, "],\n");
+
+        fprintf(fp, "      \"sites\": [");
+        for (int j = 0; j < iso->n_introns; j++) {
+            if (j > 0) {
+                fprintf(fp, ", ");
+            }
+            fprintf(fp, "%d, %d", iso->dons ? iso->dons[j] : 0,
+                                   iso->accs ? iso->accs[j] : 0);
+        }
+        fprintf(fp, "]\n");
+
+        fprintf(fp, "    }%s\n", (i < loc->n_isoforms - 1) ? "," : "");
+    }
+
+    fprintf(fp, "  ]\n");
+    fprintf(fp, "}\n");
+
+    fclose(fp);
+    return 0;
 }
 
 /* --------------- Debug Output --------------- */
