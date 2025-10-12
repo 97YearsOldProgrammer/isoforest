@@ -42,6 +42,7 @@ void allocate_vit(Vitbi_algo *vit, Observed_events *info) {
             exit(EXIT_FAILURE);
         }
     }
+
     vit->exon = 0.0;
     vit->intron = 0.0;
 }
@@ -242,13 +243,33 @@ void single_viterbi_algo(Pos_prob *pos, Observed_events *info, Explicit_duration
         }
     }
     
+    int end_boundary = info->T - FLANK;
+
+    if (path[end_boundary - 1] == 1) {
+        int last_donor_pos = -1;
+        for (int t = end_boundary - 1; t >= FLANK; t--) {
+            if (path[t] == 1 && (t == FLANK || path[t-1] == 0)) {
+                last_donor_pos = t;
+                break;
+            }
+        }
+
+        if (last_donor_pos >= 0) {
+            int forced_acceptor = last_donor_pos + ed->min_len_intron;
+            int start_zero = forced_acceptor < end_boundary ? forced_acceptor : end_boundary;
+            for (int t = start_zero; t < end_boundary; t++) {
+                path[t] = 0;
+            }
+        }
+    }
+
     double total_val = 0.0;
-    for (int t = FLANK; t < info->T - FLANK; t++) {
+    for (int t = FLANK; t < end_boundary; t++) {
         total_val += path_val[t];
     }
     
     if (loc->n_isoforms < loc->capacity) {
-        Isoform *iso = create_isoform(FLANK, info->T - FLANK - 1);
+        Isoform *iso = create_isoform(FLANK, end_boundary-1);
         extract_isoform_from_path(path, info, iso);
         iso->val = total_val;
         
@@ -407,22 +428,67 @@ void extract_isoform_from_path(int *path, Observed_events *info, Isoform *iso) {
         }
     }
     
-    // Set the number of well-formed introns (paired donor/acceptor)
-    int paired_introns = (n_dons < n_accs) ? n_dons : n_accs;
-    iso->n_introns = paired_introns;
-
-    // Only allocate and fill arrays if there are complete introns
-    if (paired_introns > 0) {
-        iso->dons = malloc(paired_introns * sizeof(int));
-        iso->accs = malloc(paired_introns * sizeof(int));
-
-        for (int i = 0; i < paired_introns; i++) {
-            iso->dons[i] = temp_dons[i];
+    int max_pairs = (n_dons < n_accs) ? n_dons : n_accs;
+    if (max_pairs == 0) {
+        if (DEBUG) {
+            printf("Extracted transitions from path: donors=%d, acceptors=%d, paired=0\n",
+                   n_dons, n_accs);
         }
-    } else {
-        // No introns found - set pointers to NULL
+        iso->n_introns = 0;
         iso->dons = NULL;
         iso->accs = NULL;
+        free(temp_dons);
+        free(temp_accs);
+        return;
+    }
+
+    iso->dons = malloc(max_pairs * sizeof(int));
+    iso->accs = malloc(max_pairs * sizeof(int));
+    if (!iso->dons || !iso->accs) {
+        free(iso->dons);
+        free(iso->accs);
+        iso->dons = NULL;
+        iso->accs = NULL;
+        iso->n_introns = 0;
+        free(temp_dons);
+        free(temp_accs);
+        return;
+    }
+
+    int don_idx = 0;
+    int acc_idx = 0;
+    int pair_idx = 0;
+
+    while (don_idx < n_dons && acc_idx < n_accs) {
+        if (temp_dons[don_idx] < temp_accs[acc_idx]) {
+            iso->dons[pair_idx] = temp_dons[don_idx];
+            iso->accs[pair_idx] = temp_accs[acc_idx];
+            pair_idx++;
+            don_idx++;
+            acc_idx++;
+        } else {
+            acc_idx++;
+        }
+    }
+
+    iso->n_introns = pair_idx;
+
+    if (DEBUG) {
+        printf("Extracted transitions from path: donors=%d, acceptors=%d, paired=%d\n",
+               n_dons, n_accs, iso->n_introns);
+    }
+
+    if (iso->n_introns == 0) {
+        free(iso->dons);
+        free(iso->accs);
+        iso->dons = NULL;
+        iso->accs = NULL;
+    } else if (iso->n_introns < max_pairs) {
+        int new_size = iso->n_introns * sizeof(int);
+        int *resized_dons = realloc(iso->dons, new_size);
+        int *resized_accs = realloc(iso->accs, new_size);
+        if (resized_dons) iso->dons = resized_dons;
+        if (resized_accs) iso->accs = resized_accs;
     }
     
     // Add debug output
@@ -433,6 +499,7 @@ void extract_isoform_from_path(int *path, Observed_events *info, Isoform *iso) {
     free(temp_dons);
     free(temp_accs);
 }
+
 
 /* --------------- Memory Management --------------- */
 
