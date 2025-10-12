@@ -101,67 +101,48 @@ void print_locus(Locus *loc, Observed_events *info) {
 
 /* --------------- JSON Output --------------- */
 
-int write_locus_json(Locus *loc, Observed_events *info, const char *filename) {
-    if (!loc || !info || !filename) {
-        return -1;
-    }
-
-    FILE *fp = fopen(filename, "w");
-    if (!fp) {
-        fprintf(stderr, "Error: unable to open JSON output file %s\n", filename);
-        return -1;
+void print_locus_json(Locus *loc, Observed_events *info, FILE *out) {
+    if (!loc || !info || !out) {
+        return;
     }
 
     int FLANK = (info->flank != 0) ? info->flank : DEFAULT_FLANK;
 
-    fprintf(fp, "{\n");
-    fprintf(fp, "  \"flank\": %d,\n", FLANK);
-    fprintf(fp, "  \"sequence_length\": %d,\n", info->T);
-    fprintf(fp, "  \"locus\": [\n");
+    fprintf(out, "{\n");
+    fprintf(out, "  \"flank\": %d,\n", FLANK);
+    fprintf(out, "  \"sequence_length\": %d,\n", info->T);
+    
+    // Print begin and end once at the top level
+    if (loc->n_isoforms > 0 && loc->isoforms[0]) {
+        fprintf(out, "  \"begin\": %d,\n", loc->isoforms[0]->beg);
+        fprintf(out, "  \"end\": %d,\n", loc->isoforms[0]->end);
+    }
+    
+    fprintf(out, "  \"locus\": [\n");
 
     for (int i = 0; i < loc->n_isoforms; i++) {
         Isoform *iso = loc->isoforms[i];
-        fprintf(fp, "    {\n");
-        fprintf(fp, "      \"begin\": %d,\n", iso->beg);
-        fprintf(fp, "      \"end\": %d,\n", iso->end);
-        fprintf(fp, "      \"score\": %.15g,\n", iso->val);
-
-        fprintf(fp, "      \"donors\": [");
+        fprintf(out, "    {\n");
+        fprintf(out, "      \"dons\": [");
         for (int j = 0; j < iso->n_introns; j++) {
-            fprintf(fp, "%d", iso->dons ? iso->dons[j] : 0);
+            fprintf(out, "%d", iso->dons ? iso->dons[j] : 0);
             if (j < iso->n_introns - 1) {
-                fprintf(fp, ", ");
+                fprintf(out, ", ");
             }
         }
-        fprintf(fp, "],\n");
-
-        fprintf(fp, "      \"acceptors\": [");
+        fprintf(out, "],\n");
+        fprintf(out, "      \"accs\": [");
         for (int j = 0; j < iso->n_introns; j++) {
-            fprintf(fp, "%d", iso->accs ? iso->accs[j] : 0);
+            fprintf(out, "%d", iso->accs ? iso->accs[j] : 0);
             if (j < iso->n_introns - 1) {
-                fprintf(fp, ", ");
+                fprintf(out, ", ");
             }
         }
-        fprintf(fp, "],\n");
-
-        fprintf(fp, "      \"sites\": [");
-        for (int j = 0; j < iso->n_introns; j++) {
-            if (j > 0) {
-                fprintf(fp, ", ");
-            }
-            fprintf(fp, "%d, %d", iso->dons ? iso->dons[j] : 0,
-                                   iso->accs ? iso->accs[j] : 0);
-        }
-        fprintf(fp, "]\n");
-
-        fprintf(fp, "    }%s\n", (i < loc->n_isoforms - 1) ? "," : "");
+        fprintf(out, "]\n");
+        fprintf(out, "    }%s\n", (i < loc->n_isoforms - 1) ? "," : "");
     }
-
-    fprintf(fp, "  ]\n");
-    fprintf(fp, "}\n");
-
-    fclose(fp);
-    return 0;
+    fprintf(out, "  ]\n");
+    fprintf(out, "}\n");
 }
 
 /* --------------- Debug Output --------------- */

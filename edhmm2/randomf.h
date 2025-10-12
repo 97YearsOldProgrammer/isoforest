@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include "model.h"
@@ -87,28 +88,26 @@ void path_restricted_viterbi(Pos_prob *pos, Observed_events *info, Explicit_dura
 void extract_isoform_from_path(int *path, Observed_events *info, Isoform *iso);
 void reset_viterbi(Vitbi_algo *vit, Observed_events *info);
 void initialize_viterbi_from_posterior(Vitbi_algo *vit, Pos_prob *pos, Observed_events *info);
-int validate_isoform(Isoform *iso, Explicit_duration *ed);
+int  validate_isoform(Isoform *iso, Explicit_duration *ed);
 
 
 /* --------------- Viterbi On Decision Tree Splitting Criteria --------------- */
 void viterbi_on_subset(SpliceSite *sites, int n_sites, Observed_events *info,
                       Explicit_duration *ed, Lambda *l, Locus *loc, 
-                      Vitbi_algo *vit, int use_path_restriction, int node_size,
+                      Vitbi_algo *vit, int node_size,
                       IsoformHashTable *hash_table);
 
 void build_tree_with_viterbi(SpliceSite *sites, int n_sites, RandomForest *rf,
                              Observed_events *info, Explicit_duration *ed, 
-                             Lambda *l, Locus *loc, Vitbi_algo *vit,
-                             int use_path_restriction);
+                             Lambda *l, Locus *loc, Vitbi_algo *vit);
 
 /* --------------- Viterbi On Random Forest --------------- */
 void generate_isoforms_random_forest(RandomForest *rf, Observed_events *info,
                                     Explicit_duration *ed, Lambda *l,
-                                    Locus *loc, Vitbi_algo *vit,
-                                    int use_path_restriction);
+                                    Locus *loc, Vitbi_algo *vit);
 
 /* --------------- Output Functions --------------- */
 void print_locus(Locus *loc, Observed_events *info);
-int write_locus_json(Locus *loc, Observed_events *info, const char *filename);
+void print_locus_json(Locus *loc, Observed_events *info, FILE *out);
 
 #endif

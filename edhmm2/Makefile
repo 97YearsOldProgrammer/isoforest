@@ -87,7 +87,7 @@ rf-verbose: hmm
 		--ped_intron ../models/intron.len \
 		--n_isoforms 100 \
 		--m 0.5 \
-		--stovit --verbose --r
+		--stovit --verbose
 
 rf-custom: hmm
 	@echo "Running Random Forest with custom parameters"
@@ -98,10 +98,11 @@ rf-custom: hmm
 		--intron_emission ../models/intron.mm \
 		--ped_exon ../models/exon.len \
 		--ped_intron ../models/intron.len \
-		--n_isoforms 100000 \
+		--n_isoforms 10 \
 		--m 0.5 \
 		--stovit \
-		--node_size 5
+		--node_size 5 \
+		--json
 
 rf-restrict: hmm
 	@echo "Running Random Forest with path restriction"
@@ -114,8 +115,7 @@ rf-restrict: hmm
 		--ped_intron ../models/intron.len \
 		--n_isoforms 100 \
 		--m 0.5 \
-		--stovit \
-		--restrict_path
+		--stovit
 
 rf-short: hmm
 	@echo "Running Random Forest (short flags)"
