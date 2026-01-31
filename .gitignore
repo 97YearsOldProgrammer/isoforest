@@ -16,10 +16,31 @@ env/
 # VS Code / Pylance Workspace Settings
 .vscode/
 
-# All compiled file
+# Compiled Object files
 *.o
+*.obj
 
+# Precompiled Headers
+*.gch
+*.pch
 
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects (Linux/Unix)
+*.so
+*.so.*
+
+# Dynamic libraries (macOS)
+*.dylib
+
+# Executables (Windows)
+*.exe
+*.out
+*.app
 
 
 # ignore all decompressed fasta and gff file
