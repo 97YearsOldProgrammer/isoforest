@@ -16,6 +16,8 @@ env/
 # VS Code / Pylance Workspace Settings
 .vscode/
 
+# All compiled file
+*.o
 
 
 
