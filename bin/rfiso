@@ -40,8 +40,6 @@ parser.add_argument('--winl', type=float, default=1.0,
     metavar='<float>', help='intron length weight [%(default).2f]')
 parser.add_argument('--winf', type=float, default=1.0,
     metavar='<float>', help='intron frequency weight [%(default).2f]')
-
-# hmm & rf parameter
 parser.add_argument('--locus_size', type=int, default=100000,
     metavar='<int>', help='isoform capacity for a locus')
 parser.add_argument('--mtry', type=float, default=0.5,  
