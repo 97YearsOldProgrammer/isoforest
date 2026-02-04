@@ -68,12 +68,13 @@ void basis_fw_algo(Lambda *l, Explicit_duration *ed,  Forward_algorithm *alpha, 
     alpha_sum = LOG_ZERO;  // Initialize to log(0)
 
     int duration = -1;
+    KmerCache *cache = info->kmer_cache;
     for (int bps = FLANK ; bps < donor+1 ; bps++) {
         // Boundary check: ensure we don't go negative
         int kmer_start = bps - ekmer + 1;
         if (kmer_start < 0) continue;
 
-        idx_em_prob = base4_to_int(info->numerical_sequence, kmer_start, ekmer);
+        idx_em_prob = cache->exon[bps];  // O(1) cache lookup
         em_prob     = l->B.exon[idx_em_prob];
 
         // Log-space accumulation
@@ -107,7 +108,7 @@ void basis_fw_algo(Lambda *l, Explicit_duration *ed,  Forward_algorithm *alpha, 
     if  (tau > ed->max_len_intron)  tau = ed->max_len_intron;
 
     em_prob         = l->B.intron[idx_em_prob];
-    idx_tran_prob   = base4_to_int(info->numerical_sequence, donor, dkmer);
+    idx_tran_prob   = cache->donor[donor];  // O(1) cache lookup
     tran_prob       = l->A.dons[idx_tran_prob];
 
     // Log-space: multiply is addition, check for LOG_ZERO
@@ -144,37 +145,37 @@ void basis_fw_algo(Lambda *l, Explicit_duration *ed,  Forward_algorithm *alpha, 
 */
 void fw_algo(Lambda *l, Forward_algorithm *alpha, Observed_events *info, Explicit_duration *ed) {
     int FLANK = (info->flank != 0) ? info->flank : DEFAULT_FLANK;
-    int dkmer = l->B.don_kmer_len;
-    int akmer = l->B.acc_kmer_len;
-    int ekmer = l->B.exon_kmer_len;
-    int ikmer = l->B.intron_kmer_len;
     if(DEBUG)  printf("Start computation for forward algorithm:\n");
 
     int start = alpha->first_dons+1;
     int end   = info->T-FLANK-ed->min_len_exon;
     int tau   = end-start+1;
     int bound;
+    KmerCache *cache = info->kmer_cache;
 
     for (int bps = start; bps < end; bps++) {
         tau--;
 
         for (int hs = 0; hs < HS; hs++) {
             double  tran_prob, ed_prob, em_prob, tran_node, cont_node;
-            int     idx_tran_prob, idx_em_prob, con_hs, okmer;
-            // observed sequence kmer
-            okmer = (hs == 0) ? ekmer : ikmer;
+            int     idx_tran_prob, idx_em_prob, con_hs;
+
             bound = (hs == 0) ? ed->max_len_exon : ed->max_len_intron;
             if (tau >= bound)   tau = bound;
 
-            con_hs      = (hs == 0) ? 1 : 0;
-            idx_em_prob = base4_to_int(info->numerical_sequence, bps-okmer+1, okmer);
+            con_hs = (hs == 0) ? 1 : 0;
+
+            // O(1) cache lookups instead of O(k) base4_to_int calls
+            idx_em_prob = (hs == 0) ? cache->exon[bps] : cache->intron[bps];
             em_prob     = (hs == 0) ? l->B.exon[idx_em_prob] : l->B.intron[idx_em_prob];
 
             if (hs == 0) {
-                idx_tran_prob = base4_to_int(info->numerical_sequence, bps-akmer, akmer);
+                // Acceptor: k-mer ending at bps-1
+                idx_tran_prob = cache->acceptor[bps - 1];
                 tran_prob = l->A.accs[idx_tran_prob];
             } else {
-                idx_tran_prob = base4_to_int(info->numerical_sequence, bps, dkmer);
+                // Donor: k-mer starting at bps
+                idx_tran_prob = cache->donor[bps];
                 tran_prob = l->A.dons[idx_tran_prob];
             }
             tran_node = alpha->a[bps - 1][con_hs];

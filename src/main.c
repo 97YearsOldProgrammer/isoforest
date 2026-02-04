@@ -296,9 +296,25 @@ int main(int argc, char *argv[])
         log_space_converter(l.B.intron, intron_size);
     }
 
+    /* --------------- Initialize K-mer Cache --------------- */
+    if (DEBUG) printf("\n--- Phase 5.5: Initializing K-mer Cache ---\n");
+
+    info.kmer_cache = allocate_kmer_cache(
+        info.T,
+        l.B.exon_kmer_len,
+        l.B.intron_kmer_len,
+        l.B.don_kmer_len,
+        l.B.acc_kmer_len
+    );
+    if (!info.kmer_cache) {
+        fprintf(stderr, "Error: Failed to allocate k-mer cache\n");
+        return 1;
+    }
+    init_kmer_cache(info.kmer_cache, info.numerical_sequence);
+
     /* --------------- Exe Forward Backward Algorithm --------------- */
     if (DEBUG) printf("\n--- Phase 6: Forward-Backward Algorithm ---\n");
-    
+
     // Allocate memory for algorithms
     allocate_fw(&info, &fw, &ed);
     allocate_bw(&bw, &ed, &info);
@@ -371,13 +387,14 @@ int main(int argc, char *argv[])
 
     /* --------------- Memory Cleanup --------------- */
     if (DEBUG) printf("\n--- Phase 8: Cleanup ---\n");
-    
+
     free_splice_sites(&pos);
     free_alpha(&info, &fw);
     free_beta(&info, &bw);
     free_pos(&pos, &info);
     free(info.original_sequence);
     free(info.numerical_sequence);
+    free_kmer_cache(info.kmer_cache);
     free_lambda(&l);
     free_explicit_duration(&ed);
     

@@ -49,12 +49,13 @@ void basis_bw_algo(Lambda *l, Backward_algorithm *beta, Observed_events *info, E
     beta->last_accs = accs;
     // compute the bw exon until first accs site
     bw_sum = LOG_ZERO;
+    KmerCache *cache = info->kmer_cache;
     for (int bps = info->T-FLANK ; bps > accs; bps--) {
         // Boundary check
         int kmer_start = bps - ekmer + 1;
         if (kmer_start < 0) continue;
 
-        idx_em_prob = base4_to_int(info->numerical_sequence, kmer_start, ekmer);
+        idx_em_prob = cache->exon[bps];  // O(1) cache lookup
         em_prob     = l->B.exon[idx_em_prob];
 
         // Log-space accumulation
@@ -68,7 +69,7 @@ void basis_bw_algo(Lambda *l, Backward_algorithm *beta, Observed_events *info, E
     }
 
     // update the intron basis
-    idx_tran_prob  = base4_to_int(info->numerical_sequence, accs-akmer+1, akmer);
+    idx_tran_prob  = cache->acceptor[accs];  // O(1) cache lookup
     tran_prob      = l->A.accs[idx_tran_prob];
     ed_prob        = (exon_len >= 0 && exon_len < ed->exon_len) ? ed->exon[exon_len] : LOG_ZERO;
 
@@ -94,15 +95,12 @@ void basis_bw_algo(Lambda *l, Backward_algorithm *beta, Observed_events *info, E
 */
 void bw_algo(Lambda *l, Backward_algorithm *beta, Observed_events *info, Explicit_duration *ed) {
     int FLANK = (info->flank != 0) ? info->flank : DEFAULT_FLANK;
-    int dkmer = l->B.don_kmer_len;
-    int akmer = l->B.acc_kmer_len;
-    int ekmer = l->B.exon_kmer_len;
-    int ikmer = l->B.intron_kmer_len;
     if (DEBUG)      printf("Start Backward Algorithm:");
 
     int start = beta->last_accs-1;
     int end   = FLANK;
     int tau;                    // [tau]    : the residual bound for hidden state
+    KmerCache *cache = info->kmer_cache;
 
     if (DEBUG)    printf("\n\tCompute from region %d to %d", start, end);
 
@@ -114,7 +112,7 @@ void bw_algo(Lambda *l, Backward_algorithm *beta, Observed_events *info, Explici
         double bw_sum;          // [bw_sum]     : see note in first part                aka: backward sum
 
         int    con_hs;          // [con_hs]     : conjugated hidden state
-        int    idx_tran_prob, idx_em_prob, okmer;
+        int    idx_tran_prob, idx_em_prob;
 
         for (int hs = 0 ; hs < HS ; hs++) {
 
@@ -134,17 +132,17 @@ void bw_algo(Lambda *l, Backward_algorithm *beta, Observed_events *info, Explici
             }
             bw_sum = log_sum_exp(l->log_values, n);
 
+            // O(1) cache lookups instead of O(k) base4_to_int calls
             if (hs == 0) {
-                idx_tran_prob = base4_to_int(info->numerical_sequence, bps+1, dkmer);
+                idx_tran_prob = cache->donor[bps + 1];  // donor starting at bps+1
                 tran_prob     = l->A.dons[idx_tran_prob];
             } else {
-                idx_tran_prob = base4_to_int(info->numerical_sequence, bps-akmer+1, akmer);
+                idx_tran_prob = cache->acceptor[bps];   // acceptor ending at bps
                 tran_prob     = l->A.accs[idx_tran_prob];
             }
 
-            okmer       = (con_hs == 0) ? ekmer : ikmer;
-            // Note: Using bps-okmer+1 to match forward algorithm indexing
-            idx_em_prob = base4_to_int(info->numerical_sequence, bps-okmer+1, okmer);
+            // Emission: k-mer ending at bps
+            idx_em_prob = (con_hs == 0) ? cache->exon[bps] : cache->intron[bps];
             em_prob     = (con_hs == 0) ? l->B.exon[idx_em_prob] : l->B.intron[idx_em_prob];
 
             if (IS_LOG_ZERO(tran_prob) || IS_LOG_ZERO(bw_sum)) {
@@ -157,8 +155,8 @@ void bw_algo(Lambda *l, Backward_algorithm *beta, Observed_events *info, Explici
         }
 
         for (int hs = 0 ; hs < HS ; hs++) {
-            okmer       = (hs == 0) ? ekmer : ikmer;
-            idx_em_prob = base4_to_int(info->numerical_sequence, bps-okmer+1, okmer);
+            // O(1) cache lookup
+            idx_em_prob = (hs == 0) ? cache->exon[bps] : cache->intron[bps];
             em_prob     = (hs == 0) ? l->B.exon[idx_em_prob] : l->B.intron[idx_em_prob];
             tau         = (hs == 0) ? ed->max_len_exon : ed->max_len_intron;
             for (int i = tau-1 ; i > 0 ; --i) {
