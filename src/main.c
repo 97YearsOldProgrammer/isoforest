@@ -4,6 +4,7 @@
 #include <getopt.h>
 #include "model.h"
 #include "decoder/randomf.h"
+#include "batch.h"
 
 int     DEBUG                   = 0;
 int     use_random_forest       = 0;
@@ -13,8 +14,9 @@ int     model_in_log_space      = 0;
 void print_usage(const char *program_name) {
     printf("RFHMM - Random Forest Hidden Markov Model for gene prediction\n");
     printf("Usage: %s [OPTIONS]\n\n", program_name);
-    printf("Required options:\n");
-    printf("  -s, --sequence FILE           Input sequence file\n");
+    printf("Required options (use ONE):\n");
+    printf("  -s, --sequence FILE           Input sequence file (single mode)\n");
+    printf("  -B, --batch FILE              Batch file with sequence paths (parallel mode)\n");
     printf("\nModel options (use ONE of the following):\n");
     printf("  -M, --model FILE              JSON model file (.splicemodel)\n");
     printf("  OR individual model files:\n");
@@ -31,6 +33,8 @@ void print_usage(const char *program_name) {
     printf("  -N, --n_isoforms NUM          Maximum isoform capacity (default: 10000)\n");
     printf("  -m, --mtry FRACTION           Fraction of features to sample (e.g., 0.5 or 1/2, default: 0.5)\n");
     printf("  -z, --node_size NUM           Minimum number of observations in terminal node (default: 5)\n");
+    printf("\nParallel processing (with --batch):\n");
+    printf("  -t, --threads NUM             Number of threads (default: all available cores)\n");
     printf("\nOutput control:\n");
     printf("  -p, --print_splice            Print detailed splice site analysis\n");
     printf("  -j, --json                    Emit isoform locus information as JSON\n");
@@ -39,9 +43,13 @@ void print_usage(const char *program_name) {
     printf("\nExamples:\n");
     printf("  %s --sequence input.fasta \n", program_name);
     printf("  %s -s input.fasta --stovit\n", program_name);
-    printf("  %s -s input.fasta --stovit --n_isoforms 5000 --mtry 3\n", program_name);
+    printf("  %s --batch sequences.txt --threads 8 --stovit\n", program_name);
+    printf("  %s -s input.fasta --stovit --n_isoforms 5000 --mtry 0.5\n", program_name);
     printf("  %s -s input.fasta --print_splice --flank 150\n", program_name);
-    printf("  %s -s input.fasta --verbose\n", program_name);
+    printf("\nBatch file format (one sequence path per line):\n");
+    printf("  # This is a comment\n");
+    printf("  /path/to/sequence1.fasta\n");
+    printf("  /path/to/sequence2.fasta\n");
     printf("\nRandom Forest Algorithm:\n");
     printf("  The algorithm generates trees continuously until the locus capacity\n");
     printf("  is reached. It automatically finds unique isoforms without needing\n");
@@ -66,15 +74,18 @@ int main(int argc, char *argv[])
     char *Ped_exon              = default_Ped_exon;
     char *Ped_intron            = default_Ped_intron;
     char *seq_input             = NULL;
+    char *batch_file            = NULL;
     char *model_file            = NULL;
     int print_splice_detailed   = 0;
     int output_json             = 0;
     int flank_size              = DEFAULT_FLANK;
     float mtry                  = 0.5;          // Default to 1/2 of features
     int node_size               = 5;            // for regression 5 as node_size
+    int n_threads               = 0;            // 0 = use all available
 
     static struct option long_options[] = {
         {"sequence",        required_argument, 0, 's'},
+        {"batch",           required_argument, 0, 'B'},
         {"model",           required_argument, 0, 'M'},
         {"don_emission",    required_argument, 0, 'd'},
         {"acc_emission",    required_argument, 0, 'a'},
@@ -86,6 +97,7 @@ int main(int argc, char *argv[])
         {"n_isoforms",      required_argument, 0, 'N'},
         {"mtry",            required_argument, 0, 'm'},
         {"node_size",       required_argument, 0, 'z'},
+        {"threads",         required_argument, 0, 't'},
         {"json",            no_argument,       0, 'j'},
         {"print_splice",    no_argument,       0, 'p'},
         {"stovit",          no_argument,       0, 'S'},
@@ -97,10 +109,20 @@ int main(int argc, char *argv[])
     int option_index = 0;
     int c;
 
-    while ((c = getopt_long(argc, argv, "s:M:d:a:e:i:x:n:f:N:m:z:jSpvh", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:B:M:d:a:e:i:x:n:f:N:m:z:t:jSpvh", long_options, &option_index)) != -1) {
         switch (c) {
             case 's':
                 seq_input = optarg;
+                break;
+            case 'B':
+                batch_file = optarg;
+                break;
+            case 't':
+                n_threads = atoi(optarg);
+                if (n_threads < 0) {
+                    fprintf(stderr, "Error: threads must be non-negative\n");
+                    return 1;
+                }
                 break;
             case 'M':
                 model_file = optarg;
@@ -185,12 +207,57 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (seq_input == NULL) {
-        fprintf(stderr, "Error: --sequence is required\n");
+    if (seq_input == NULL && batch_file == NULL) {
+        fprintf(stderr, "Error: --sequence or --batch is required\n");
         print_usage(argv[0]);
         return 1;
     }
 
+    if (seq_input != NULL && batch_file != NULL) {
+        fprintf(stderr, "Error: Cannot use both --sequence and --batch\n");
+        return 1;
+    }
+
+    /* --------------- Batch Processing Mode --------------- */
+    if (batch_file != NULL) {
+        BatchConfig config = {
+            .don_emission = don_emission,
+            .acc_emission = acc_emission,
+            .exon_emission = exon_emission,
+            .intron_emission = intron_emission,
+            .ped_exon = Ped_exon,
+            .ped_intron = Ped_intron,
+            .model_file = model_file,
+            .flank_size = flank_size,
+            .use_random_forest = use_random_forest,
+            .n_isoforms = n_isoforms,
+            .mtry = mtry,
+            .node_size = node_size,
+            .output_json = output_json,
+            .print_splice = print_splice_detailed
+        };
+
+        int n_files;
+        char **seq_files = read_batch_file(batch_file, &n_files);
+        if (!seq_files || n_files == 0) {
+            fprintf(stderr, "Error: No sequences found in batch file\n");
+            return 1;
+        }
+
+        BatchResult **results = process_batch_parallel(seq_files, n_files, &config, n_threads);
+        print_batch_summary(results, n_files);
+
+        // Cleanup
+        free_batch_results(results, n_files);
+        for (int i = 0; i < n_files; i++) {
+            free(seq_files[i]);
+        }
+        free(seq_files);
+
+        return 0;
+    }
+
+    /* --------------- Single Sequence Mode --------------- */
     /* --------------- Initialize Data Structure --------------- */
     Observed_events info;
     Lambda l;
