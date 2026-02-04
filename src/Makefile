@@ -24,7 +24,7 @@ OBJS = $(CORE_SRC:.c=.o) \
        $(DECODER_SRC:.c=.o)
 
 # Header dependencies
-HEADERS = $(wildcard $(INCDIR)/*.h) model.h cJSON.h $(DECDIR)/randomf.h batch.h
+HEADERS = $(wildcard $(INCDIR)/*.h) model.h cJSON.h $(DECDIR)/randomf.h $(DECDIR)/mcts.h batch.h
 
 # ==============================================================================
 # Build Configurations
@@ -99,8 +99,8 @@ $(DECDIR)/%.o: $(DECDIR)/%.c $(HEADERS)
 test: $(TARGET)
 	./$(TARGET) -s seq -M ../models/worm.splicemodel -v
 
-rf: $(TARGET)
-	./$(TARGET) -s seq -M ../models/worm.splicemodel -S -N 100
+mcts: $(TARGET)
+	./$(TARGET) -s seq -M ../models/worm.splicemodel -T -N 100 -v
 
 clean:
 	rm -f $(TARGET) *.o $(PARSEDIR)/*.o $(ENCDIR)/*.o $(DECDIR)/*.o
@@ -108,4 +108,4 @@ clean:
 help: $(TARGET)
 	./$(TARGET) --help
 
-.PHONY: all release openmp test rf clean help
+.PHONY: all release openmp test mcts clean help

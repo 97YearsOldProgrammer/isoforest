@@ -27,7 +27,7 @@ def run_hmm(hmm, fasta, models_dir=None):
         "--intron_emission", os.path.join(models_dir, "intron.mm"),
         "--ped_exon", os.path.join(models_dir, "exon.len"),
         "--ped_intron", os.path.join(models_dir, "intron.len"),
-        "--print_splice"
+        "--verbose"
     ]
     
     try:
@@ -39,7 +39,7 @@ def run_hmm(hmm, fasta, models_dir=None):
         print(f"Stderr: {e.stderr}")
         raise
 
-def parse_hmm(output, stovit=False):    
+def parse_hmm(output):
     dons = []
     accs = []
     switch = 0
@@ -211,76 +211,28 @@ def run_geniso2(geniso, fasta, model, hints=False):
         return f"Error in geniso2: {e.stderr}"
 
 
-#########################
-####### RF SECTION ######
-#########################
-
-def parse_rf(output):
-    """Parse HMM for rf"""
-
-    hints   = []
-    typ     = None
-    
-    for line in output.strip().split('\n'):
-        line = line.strip()
-        
-        if not line:    continue
-            
-        if line == "DONS":
-            typ = "don"
-            continue
-        elif line == "ACCS":
-            typ = "acc"
-            continue
-        
-        if typ and '\t' in line or '     ' in line:
-            parts = line.split()
-            if len(parts) >= 2:
-                pos     = int(parts[0])
-                val     = float(parts[1])
-                hints.append((pos, typ, val))
-    
-    return hints
-
-def prepare_rf_input(hints):
-    """Hmm hints to rf Input"""
-    
-    dons = []
-    accs = []
-    pos2info = {}
-    
-    for pos, typ, val in hints:
-        pos2info[pos] = (val, typ)
-        if typ == 'don':
-            dons.append(pos)
-        elif typ == 'acc':
-            accs.append(pos)
-    
-    return dons, accs, pos2info
-
 ############################
-####### rfhmm section ######
+####### MCTS section #######
 ############################
 
 def get_locus_fhmm(hmm, seq, models_dir=None, flank=None, n_isoforms=None,
-                   mtry=None, node_size=None):
-    """Get Locus from HMM"""
-    
-    # Find models directory
+                   explore=None):
+    """Get Locus from HMM using MCTS"""
+
     if models_dir is None:
         exe_dir = os.path.dirname(os.path.abspath(hmm))
         models_dir = os.path.join(exe_dir, "..", "..", "models")
-    
+
     models_dir = os.path.abspath(models_dir)
-    
+
     if not os.path.exists(models_dir):
         raise ValueError(f"Models directory not found: {models_dir}")
-    
+
     cmd = [
         hmm,
         "--sequence", seq,
         "--json",
-        "--stovit",
+        "--mcts",
         "--don_emission", os.path.join(models_dir, "don.pwm"),
         "--acc_emission", os.path.join(models_dir, "acc.pwm"),
         "--exon_emission", os.path.join(models_dir, "exon.mm"),
@@ -288,27 +240,18 @@ def get_locus_fhmm(hmm, seq, models_dir=None, flank=None, n_isoforms=None,
         "--ped_exon", os.path.join(models_dir, "exon.len"),
         "--ped_intron", os.path.join(models_dir, "intron.len"),
     ]
-    
+
     if flank is not None:
         cmd.extend(["--flank", str(flank)])
     if n_isoforms is not None:
         cmd.extend(["--n_isoforms", str(n_isoforms)])
-    if mtry is not None:
-        cmd.extend(["--mtry", str(mtry)])
-    if node_size is not None:
-        cmd.extend(["--node_size", str(node_size)])
-    
+    if explore is not None:
+        cmd.extend(["--explore", str(explore)])
+
     try:
         result = subprocess.run(cmd, check=True, text=True, capture_output=True)
         return json.loads(result.stdout)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"RFHMM execution failed with exit code {e.returncode}:\n{e.stderr}"
-        ) from e
+        raise RuntimeError(f"MCTS execution failed: {e.stderr}") from e
     except json.JSONDecodeError as e:
-        raise RuntimeError(
-            f"Unable to decode RFHMM JSON output.\n"
-            f"Error: {e}\n"
-            f"--- STDOUT ---\n{result.stdout}\n"
-            f"--- STDERR ---\n{result.stderr}"
-        ) from e
+        raise RuntimeError(f"Invalid JSON output: {e}") from e

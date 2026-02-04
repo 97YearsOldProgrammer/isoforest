@@ -124,21 +124,18 @@ BatchResult* process_single_sequence(const char *seq_file, BatchConfig *config) 
     result->n_donors = pos.dons;
     result->n_acceptors = pos.accs;
 
-    // Random forest (optional)
-    if (config->use_random_forest && pos.dons > 0 && pos.accs > 0) {
+    // MCTS isoform generation (optional)
+    if (config->use_mcts && pos.dons > 0 && pos.accs > 0) {
         Locus *loc = create_locus(config->n_isoforms);
-        Vitbi_algo vit;
-        memset(&vit, 0, sizeof(Vitbi_algo));
-        allocate_vit(&vit, &info);
 
-        RandomForest *rf = create_random_forest(&pos, loc, config->node_size, config->mtry);
-        generate_isoforms_random_forest(rf, &info, &ed, &l, loc, &vit);
+        MCTSTree *tree = create_mcts_tree(&pos, &ed, &info, config->mcts_explore_c);
+        int max_iterations = config->n_isoforms * 10;
+        generate_isoforms_mcts(tree, loc, max_iterations);
 
         result->n_isoforms = loc->n_isoforms;
         result->locus = loc;  // Transfer ownership
 
-        free_random_forest(rf);
-        free_vit(&vit, &info);
+        free_mcts_tree(tree);
     }
 
     result->success = 1;

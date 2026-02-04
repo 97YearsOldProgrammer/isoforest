@@ -194,51 +194,58 @@ static SpliceSite* bootstrap_sample(SpliceSite *sites, int n_sites) {
     }
     return sample;
 }
-// for mtry sampling
+// Comparator for sorting SpliceSite by (pos, typ) - used for O(n log n) deduplication
+static int compare_splice_sites(const void *a, const void *b) {
+    const SpliceSite *sa = (const SpliceSite*)a;
+    const SpliceSite *sb = (const SpliceSite*)b;
+
+    if (sa->pos != sb->pos) {
+        return sa->pos - sb->pos;
+    }
+    return sa->typ - sb->typ;
+}
+
+// O(n log n) duplicate removal using sort + single pass
+// Replaces previous O(n²) nested loop approach
 static int remove_duplicates(SpliceSite *sites, int n_sites, SpliceSite **unique_sites) {
     if (n_sites == 0 || sites == NULL) {
         *unique_sites = NULL;
         return 0;
     }
-    
-    int *seen = calloc(n_sites, sizeof(int));
-    int unique_count = 0;
-    
-    for (int i = 0; i < n_sites; i++) {
-        if (seen[i]) continue;
-        
-        seen[i] = 1;
-        unique_count++;
-        
-        for (int j = i + 1; j < n_sites; j++) {
-            if (!seen[j] && 
-                sites[i].pos == sites[j].pos && 
-                sites[i].typ == sites[j].typ) {
-                seen[j] = 1;
-            }
+
+    if (n_sites == 1) {
+        *unique_sites = malloc(sizeof(SpliceSite));
+        (*unique_sites)[0] = sites[0];
+        return 1;
+    }
+
+    // Create a sorted copy - O(n)
+    SpliceSite *sorted = malloc(n_sites * sizeof(SpliceSite));
+    memcpy(sorted, sites, n_sites * sizeof(SpliceSite));
+
+    // Sort by (pos, typ) - O(n log n)
+    qsort(sorted, n_sites, sizeof(SpliceSite), compare_splice_sites);
+
+    // Count unique elements in single pass - O(n)
+    int unique_count = 1;
+    for (int i = 1; i < n_sites; i++) {
+        if (sorted[i].pos != sorted[i-1].pos || sorted[i].typ != sorted[i-1].typ) {
+            unique_count++;
         }
     }
-    
+
+    // Allocate and fill unique array - O(n)
     *unique_sites = malloc(unique_count * sizeof(SpliceSite));
-    int idx = 0;
-    
-    memset(seen, 0, n_sites * sizeof(int));
-    for (int i = 0; i < n_sites; i++) {
-        if (seen[i]) continue;
-        
-        (*unique_sites)[idx++] = sites[i];
-        seen[i] = 1;
-        
-        for (int j = i + 1; j < n_sites; j++) {
-            if (!seen[j] && 
-                sites[i].pos == sites[j].pos && 
-                sites[i].typ == sites[j].typ) {
-                seen[j] = 1;
-            }
+    (*unique_sites)[0] = sorted[0];
+    int idx = 1;
+
+    for (int i = 1; i < n_sites; i++) {
+        if (sorted[i].pos != sorted[i-1].pos || sorted[i].typ != sorted[i-1].typ) {
+            (*unique_sites)[idx++] = sorted[i];
         }
     }
-    
-    free(seen);
+
+    free(sorted);
     return unique_count;
 }
 

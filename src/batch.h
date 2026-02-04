@@ -2,7 +2,7 @@
 #define BATCH_H
 
 #include "model.h"
-#include "decoder/randomf.h"
+#include "decoder/mcts.h"
 
 /* --------------- Batch Processing Configuration --------------- */
 typedef struct {
@@ -14,12 +14,10 @@ typedef struct {
     char *ped_intron;
     char *model_file;
     int flank_size;
-    int use_random_forest;
+    int use_mcts;
     int n_isoforms;
-    float mtry;
-    int node_size;
+    double mcts_explore_c;
     int output_json;
-    int print_splice;
 } BatchConfig;
 
 /* --------------- Batch Processing Results --------------- */

@@ -3,11 +3,11 @@
 #include <string.h>
 #include <getopt.h>
 #include "model.h"
-#include "decoder/randomf.h"
+#include "decoder/mcts.h"
 #include "batch.h"
 
 int     DEBUG                   = 0;
-int     use_random_forest       = 0;
+int     use_mcts                = 0;
 int     n_isoforms              = 10000;
 int     model_in_log_space      = 0;
 
@@ -28,32 +28,29 @@ void print_usage(const char *program_name) {
     printf("  -n, --ped_intron FILE         Intron length distribution file (default: ../models/intron.len)\n");
     printf("\nAnalysis parameters:\n");
     printf("  -f, --flank NUM               Flank size for analysis (default: 99)\n");
-    printf("\nRandom Forest options:\n");
-    printf("  -S, --stovit                  Enable stochastic Viterbi with Random Forest\n");
+    printf("\nMCTS isoform generation options:\n");
+    printf("  -T, --mcts                    Enable Monte Carlo Tree Search (MCTS) algorithm\n");
     printf("  -N, --n_isoforms NUM          Maximum isoform capacity (default: 10000)\n");
-    printf("  -m, --mtry FRACTION           Fraction of features to sample (e.g., 0.5 or 1/2, default: 0.5)\n");
-    printf("  -z, --node_size NUM           Minimum number of observations in terminal node (default: 5)\n");
+    printf("  -C, --explore FLOAT           MCTS exploration constant (default: 1.4)\n");
     printf("\nParallel processing (with --batch):\n");
     printf("  -t, --threads NUM             Number of threads (default: all available cores)\n");
     printf("\nOutput control:\n");
-    printf("  -p, --print_splice            Print detailed splice site analysis\n");
     printf("  -j, --json                    Emit isoform locus information as JSON\n");
     printf("  -v, --verbose                 Show debug and progress information\n");
     printf("  -h, --help                    Show this help message\n");
     printf("\nExamples:\n");
-    printf("  %s --sequence input.fasta \n", program_name);
-    printf("  %s -s input.fasta --stovit\n", program_name);
-    printf("  %s --batch sequences.txt --threads 8 --stovit\n", program_name);
-    printf("  %s -s input.fasta --stovit --n_isoforms 5000 --mtry 0.5\n", program_name);
-    printf("  %s -s input.fasta --print_splice --flank 150\n", program_name);
+    printf("  %s -s input.fasta --mcts\n", program_name);
+    printf("  %s -s input.fasta --mcts -N 100\n", program_name);
+    printf("  %s -s input.fasta --mcts -N 500 -C 2.0\n", program_name);
+    printf("  %s --batch sequences.txt --threads 8 --mcts\n", program_name);
     printf("\nBatch file format (one sequence path per line):\n");
     printf("  # This is a comment\n");
     printf("  /path/to/sequence1.fasta\n");
     printf("  /path/to/sequence2.fasta\n");
-    printf("\nRandom Forest Algorithm:\n");
-    printf("  The algorithm generates trees continuously until the locus capacity\n");
-    printf("  is reached. It automatically finds unique isoforms without needing\n");
-    printf("  to specify target counts or tree limits.\n");
+    printf("\nMCTS Algorithm:\n");
+    printf("  Monte Carlo Tree Search explores isoform combinations using UCB1.\n");
+    printf("  It learns which splice site combinations produce valid isoforms\n");
+    printf("  and focuses exploration on promising paths.\n");
 }
 
 int main(int argc, char *argv[])
@@ -76,12 +73,10 @@ int main(int argc, char *argv[])
     char *seq_input             = NULL;
     char *batch_file            = NULL;
     char *model_file            = NULL;
-    int print_splice_detailed   = 0;
     int output_json             = 0;
     int flank_size              = DEFAULT_FLANK;
-    float mtry                  = 0.5;          // Default to 1/2 of features
-    int node_size               = 5;            // for regression 5 as node_size
     int n_threads               = 0;            // 0 = use all available
+    double mcts_explore_c       = 1.4;          // UCB1 exploration constant
 
     static struct option long_options[] = {
         {"sequence",        required_argument, 0, 's'},
@@ -95,12 +90,10 @@ int main(int argc, char *argv[])
         {"ped_intron",      required_argument, 0, 'n'},
         {"flank",           required_argument, 0, 'f'},
         {"n_isoforms",      required_argument, 0, 'N'},
-        {"mtry",            required_argument, 0, 'm'},
-        {"node_size",       required_argument, 0, 'z'},
         {"threads",         required_argument, 0, 't'},
+        {"explore",         required_argument, 0, 'C'},
         {"json",            no_argument,       0, 'j'},
-        {"print_splice",    no_argument,       0, 'p'},
-        {"stovit",          no_argument,       0, 'S'},
+        {"mcts",            no_argument,       0, 'T'},
         {"verbose",         no_argument,       0, 'v'},
         {"help",            no_argument,       0, 'h'},
         {0, 0, 0, 0}
@@ -109,7 +102,7 @@ int main(int argc, char *argv[])
     int option_index = 0;
     int c;
 
-    while ((c = getopt_long(argc, argv, "s:B:M:d:a:e:i:x:n:f:N:m:z:t:jSpvh", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "s:B:M:d:a:e:i:x:n:f:N:t:C:jTvh", long_options, &option_index)) != -1) {
         switch (c) {
             case 's':
                 seq_input = optarg;
@@ -152,9 +145,6 @@ int main(int argc, char *argv[])
                     return 1;
                 }
                 break;
-            case 'p':
-                print_splice_detailed = 1;
-                break;
             case 'v':
                 DEBUG = 1;
                 break;
@@ -168,35 +158,18 @@ int main(int argc, char *argv[])
                     return 1;
                 }
                 break;
-            case 'm':
-                if (strchr(optarg, '/')) {
-                    int numerator, denominator;
-                    if (sscanf(optarg, "%d/%d", &numerator, &denominator) == 2 && denominator != 0) {
-                        mtry = (float)numerator / denominator;
-                    } else {
-                        fprintf(stderr, "Error: Invalid fraction format for mtry\n");
-                        return 1;
-                    }
-                } else {
-                    mtry = atof(optarg);
-                }
-                if (mtry <= 0.0 || mtry > 1.0) {
-                    fprintf(stderr, "Error: mtry must be between 0 and 1 (got %.2f)\n", mtry);
-                    return 1;
-                }
-                break;
-            case 'z':
-                node_size = atoi(optarg);
-                if (node_size < 1) {
-                    fprintf(stderr, "Error: node_size must be at least 1\n");
-                    return 1;
-                }
-                break;
             case 'j':
                 output_json = 1;
                 break;
-            case 'S':
-                use_random_forest = 1;
+            case 'T':
+                use_mcts = 1;
+                break;
+            case 'C':
+                mcts_explore_c = atof(optarg);
+                if (mcts_explore_c <= 0.0) {
+                    fprintf(stderr, "Error: exploration constant must be positive\n");
+                    return 1;
+                }
                 break;
             case '?':
                 // getopt_long already printed an error message
@@ -229,12 +202,10 @@ int main(int argc, char *argv[])
             .ped_intron = Ped_intron,
             .model_file = model_file,
             .flank_size = flank_size,
-            .use_random_forest = use_random_forest,
+            .use_mcts = use_mcts,
             .n_isoforms = n_isoforms,
-            .mtry = mtry,
-            .node_size = node_size,
-            .output_json = output_json,
-            .print_splice = print_splice_detailed
+            .mcts_explore_c = mcts_explore_c,
+            .output_json = output_json
         };
 
         int n_files;
@@ -411,46 +382,43 @@ int main(int argc, char *argv[])
         printf("Found %d donor sites and %d acceptor sites\n", pos.dons, pos.accs);
     }
 
-    /* --------------- For Stovit --------------- */
-    if (use_random_forest) {
-        if (DEBUG) printf("\n--- Phase 7: Random Forest Isoform Generation ---\n");
-        
+    /* --------------- For MCTS Isoform Generation --------------- */
+    if (use_mcts) {
+        if (DEBUG) printf("\n--- Phase 7: MCTS Isoform Generation ---\n");
+
         if (pos.dons == 0 || pos.accs == 0) {
-            printf("Warning: No splice sites found. Cannot run Random Forest.\n");
+            printf("Warning: No splice sites found. Cannot run MCTS.\n");
         } else {
             Locus *loc = create_locus(n_isoforms);
-            Vitbi_algo vit;
-            memset(&vit, 0, sizeof(Vitbi_algo));
-            allocate_vit(&vit, &info);
-            
+
             if (DEBUG) {
-                printf("Generating isoforms using Random Forest:\n");
+                printf("Generating isoforms using MCTS:\n");
                 printf("  Locus capacity: %d\n", n_isoforms);
-                printf("  Node size: %d\n", node_size);
-                printf("  Mtry: %.2f (%.0f%% of features)\n", mtry, mtry * 100);
-                printf("  Path restriction: Yes\n");
+                printf("  Exploration constant (C): %.2f\n", mcts_explore_c);
+                printf("  Donor sites: %d\n", pos.dons);
+                printf("  Acceptor sites: %d\n", pos.accs);
             }
 
-            RandomForest *rf = create_random_forest(&pos, loc, node_size, mtry);
-            generate_isoforms_random_forest(rf, &info, &ed, &l, loc, &vit);
+            // Create MCTS tree
+            MCTSTree *tree = create_mcts_tree(&pos, &ed, &info, mcts_explore_c);
+
+            // Run MCTS - iterations scale with problem size
+            int max_iterations = n_isoforms * 10;  // More iterations for better coverage
+            generate_isoforms_mcts(tree, loc, max_iterations);
+
             if (DEBUG) printf("Unique isoforms found: %d\n", loc->n_isoforms);
             if (output_json) {
                 print_locus_json(loc, &info, stdout);
             } else {
-                print_locus(loc, &info);    
+                print_locus(loc, &info);
             }
 
-            // Clean up random forest and locus
-            free_random_forest(rf);
-            free_vit(&vit, &info);
+            // Clean up
+            free_mcts_tree(tree);
             free_locus(loc);
         }
     }
 
-    /* --------------- For HMM Hints --------------- */
-    if (print_splice_detailed) {
-        print_splice_sites(&pos, &info);
-    }
 
     /* --------------- Memory Cleanup --------------- */
     if (DEBUG) printf("\n--- Phase 8: Cleanup ---\n");
