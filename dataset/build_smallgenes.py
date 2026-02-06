@@ -8,9 +8,9 @@ import sys
 
 import numpy as np
 
-from grimoire.sequence import DNA
-from grimoire.feature import Feature
-from grimoire.genome import Reader
+from grimoire.sequence i	mport DNA
+from grimoire.feature 	import Feature
+from grimoire.genome 	import Reader
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 import isoform
